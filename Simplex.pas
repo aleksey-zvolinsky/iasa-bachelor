@@ -107,6 +107,9 @@ const
 const
   ColStartLim = 2;
   RowStartLim = 2;
+  ColN = 0;
+  ColC = 1;
+  ColX = 2;
 
 
 var
@@ -173,7 +176,76 @@ begin
 end;
 
 procedure TSimplexDataModule.Iterate;
+var
+  GuidElCol, GuidElRow, i,j: integer;
+  val, GuidElVal: Double;
 begin
+  // ќпредел€ем направл€ющий столбец, согластно оценок, дл€ максимизации минимальный
+  // дл€ минимазации максимальный
+  val := 0;
+  GuidElCol := 0;
+  for i := ColStartLim+1 to ColStartLim+MaxVarCount+MaxLimitCount do
+  begin
+    case Self.OptimizeType of
+      otMin:
+        if FSimplexTable[high(FSimplexTable)][i] > val then
+        begin
+          val := FSimplexTable[high(FSimplexTable)][i];
+          GuidElCol := i;
+        end;
+      otMax:
+        if FSimplexTable[high(FSimplexTable)][i] < val then
+        begin
+          val := FSimplexTable[high(FSimplexTable)][i];
+          GuidElCol := i;
+        end;
+    end;
+  end;
+  val := FSimplexTable[RowStartLim][ColX]/FSimplexTable[RowStartLim][GuidElCol];
+  GuidElRow := RowStartLim;
+  GuidElVal := FSimplexTable[RowStartLim][GuidElCol];
+  // ќпределив направл€ющий столбец выберем направл€ющий элемент
+  for i:=RowStartLim to RowStartLim+MaxLimitCount do
+  begin
+    if FSimplexTable[i][GuidElCol] > 0 then
+      if FSimplexTable[i][ColX]/FSimplexTable[i][GuidElCol] < val then
+      begin
+        val := FSimplexTable[RowStartLim][ColX]/FSimplexTable[i][GuidElCol];
+        GuidElRow := i;
+        GuidElVal := FSimplexTable[i][GuidElCol];
+      end;
+  end;
+  // ¬ычислив направл€ющий элемент можно перестраивать симплекс таблицу
+  // Ќачинаем с того что заполн€ем колонки — и N новыми значени€ми
+
+  FSimplexTable[GuidElRow][ColC] := FSimplexTable[1][GuidElCol];
+  FSimplexTable[GuidElRow ][ColN] := FSimplexTable[0][GuidElCol];
+
+  // ѕо методу полного исключени€ √аусса-∆ордана пересчитываем остальную таблицу
+
+  // Ёлементы оставшейс€ таблицы считаем, кроме направл€ющих столбца и строки
+  for j := ColStartLim to ColStartLim+MaxVarCount+MaxLimitCount do
+  begin
+    for i := RowStartLim to RowStartLim+MaxLimitCount do
+    begin
+      if(i <> GuidElRow)and(j <> GuidElCol)then
+        FSimplexTable[i][j] := FSimplexTable[i][j]
+          - FSimplexTable[GuidElRow][j] * FSimplexTable[i][GuidElCol] / FSimplexTable[GuidElRow][GuidElCol];
+    end;
+  end;
+  // Ёлементы строки делим на ведущий элемент
+  for i := ColStartLim to ColStartLim+MaxVarCount+MaxLimitCount do
+  begin
+    FSimplexTable[GuidElRow][i] := FSimplexTable[GuidElRow][i] / GuidElVal;
+  end;
+  // Ёлементы столбца ставим нул€ми
+  for i:=RowStartLim to RowStartLim+MaxLimitCount do
+  begin
+    if i <> GuidElRow then
+    begin
+      FSimplexTable[i][GuidElCol] := 0;
+    end;
+  end;
 
 end;
 
@@ -189,7 +261,6 @@ begin
   inc(FLimitCount);
   FSimplexTable[RowStartLim+FLimitCount-1][ColStartLim+FMaxVarCount+FLimitCount] := 1;
   FSimplexTable[RowStartLim+FLimitCount-1][0] := FLimitCount+FMaxVarCount;
-
 
   // «адаем начальные параметры таблицы
   if FLimitCount = Self.MaxVarCount+1 then

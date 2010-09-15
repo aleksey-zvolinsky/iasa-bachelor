@@ -15,10 +15,11 @@ object MainForm: TMainForm
   TextHeight = 13
   object reOutput: TRichEdit
     Left = 0
-    Top = 146
+    Top = 104
     Width = 822
-    Height = 409
+    Height = 451
     Align = alBottom
+    Anchors = [akLeft, akTop, akRight, akBottom]
     Font.Charset = DEFAULT_CHARSET
     Font.Color = clWindowText
     Font.Height = -11
@@ -29,8 +30,8 @@ object MainForm: TMainForm
     TabOrder = 0
   end
   object bPrint: TButton
-    Left = 40
-    Top = 72
+    Left = 16
+    Top = 40
     Width = 75
     Height = 25
     Caption = 'Print'
@@ -38,8 +39,8 @@ object MainForm: TMainForm
     OnClick = bPrintClick
   end
   object bInit: TButton
-    Left = 40
-    Top = 40
+    Left = 16
+    Top = 8
     Width = 75
     Height = 25
     Caption = 'Init'
@@ -47,8 +48,8 @@ object MainForm: TMainForm
     OnClick = bInitClick
   end
   object bClear: TButton
-    Left = 184
-    Top = 40
+    Left = 160
+    Top = 8
     Width = 75
     Height = 25
     Caption = 'Clear'
@@ -56,8 +57,8 @@ object MainForm: TMainForm
     OnClick = bClearClick
   end
   object bIterate: TButton
-    Left = 40
-    Top = 104
+    Left = 16
+    Top = 72
     Width = 75
     Height = 25
     Caption = 'Iterate'

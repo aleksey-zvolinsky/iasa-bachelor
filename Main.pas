@@ -32,6 +32,7 @@ implementation
 
 procedure TMainForm.bPrintClick(Sender: TObject);
 begin
+  reOutput.Lines.Append('Текущее состояние симлекс-таблицы');
   reOutput.Lines.Append(SimplexDataModule.PrintTable);
 end;
 
@@ -53,9 +54,16 @@ end;
 
 procedure TMainForm.bIterateClick(Sender: TObject);
 begin
-  reOutput.Lines.Append('Итерация симплекс-метода');
-  SimplexDataModule.Iterate;
-  reOutput.Lines.Append(SimplexDataModule.PrintTable);
+  if not SimplexDataModule.IsEnd then
+  begin
+    reOutput.Lines.Append('Итерация симплекс-метода');
+    SimplexDataModule.Iterate;
+    reOutput.Lines.Append(SimplexDataModule.PrintTable);
+  end
+  else
+  begin
+    reOutput.Lines.Append('Уже достигнут оптимальный план');
+  end;
 end;
 
 end.
