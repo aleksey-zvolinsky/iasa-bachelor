@@ -15,11 +15,10 @@ object MainForm: TMainForm
   TextHeight = 13
   object reOutput: TRichEdit
     Left = 0
-    Top = 104
+    Top = 336
     Width = 822
-    Height = 451
+    Height = 219
     Align = alBottom
-    Anchors = [akLeft, akTop, akRight, akBottom]
     Font.Charset = DEFAULT_CHARSET
     Font.Color = clWindowText
     Font.Height = -11
@@ -64,5 +63,16 @@ object MainForm: TMainForm
     Caption = 'Iterate'
     TabOrder = 4
     OnClick = bIterateClick
+  end
+  object StringGrid1: TStringGrid
+    Left = 0
+    Top = 112
+    Width = 822
+    Height = 224
+    Align = alBottom
+    Anchors = [akLeft, akTop, akRight, akBottom]
+    FixedCols = 0
+    FixedRows = 0
+    TabOrder = 5
   end
 end

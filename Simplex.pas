@@ -60,13 +60,22 @@ unit Simplex;
 interface
 
 uses
-  SysUtils, Classes;
+  SysUtils, Classes, Grids;
 
 type
   // Виды условий
-  TLimitSign = (tsEqual, tsLess, tsGreater, tsLessEqual, tsGreaterEqual);
+  TLimitSign = (tsEqual, tsLess, tsGreater);
   // Виды оптимизации
   TOptimizeType = (otMin, otMax);
+type
+  TLimitRecord = record
+    Params: array of Double;
+    Sign: TLimitSign;
+  end;
+  TFuncRecord = record
+    Params: array of Double;
+    OptType: TOptimizeType;
+  end;
 
 type
   TSimplexDataModule = class(TDataModule)
@@ -76,17 +85,24 @@ type
     FSimplexTable: array of array of Variant;
     FLimitCount: integer;
     FOptimizeType: TOptimizeType;
+    LimitsList: array of TLimitRecord;
+    Func: TFuncRecord;
     function GetIsEnd: boolean;
     procedure CalcMarks;
     { Private declarations }
+    // Запись ограничения в симплекс таблице
+    procedure _SetLimit(AVarParams: array of integer; ASign: TLimitSign);
   public
     function PrintTable: string;
-    // Заданиче размерности симплек-таблицы
+    procedure PrintTableToStringGrid(AStringGrid: TStringGrid);
+    // Задание размерности симплек-таблицы и типа оптимизации
     procedure Init(AOptimizeType: TOptimizeType; AMaxVarCount: integer; AMaxLimitCount: integer);
     // Задаем целевую функцию
-    procedure SetFunc(AVarParams: array of integer);
+    procedure SetFunc(AVarParams: array of integer; AOptimizeType: TOptimizeType);
     // Задаем ограничения
     procedure SetLimit(AVarParams: array of integer; ASign: TLimitSign);
+    // Составление симплекс таблицы
+    procedure PreIterate;
     // Итерация Симплек-метода
     procedure Iterate;
     // Проверка на достижение оптимальности Симплек-метода
@@ -103,7 +119,7 @@ type
 
 const
   LimitSign: array[Low(TLimitSign)..High(TLimitSign)]of string
-    = ('=','<','>','<=','>=');
+    = ('=','<=','>=');
 const
   ColStartLim = 2;
   RowStartLim = 2;
@@ -125,36 +141,11 @@ uses Variants;
 
 procedure TSimplexDataModule.Init(AOptimizeType: TOptimizeType;
   AMaxVarCount, AMaxLimitCount: integer);
-var
-  i,j: integer;
 begin
   FOptimizeType := AOptimizeType;
   FLimitCount := 0;
   FMaxVarCount := AMaxVarCount;
   FMaxLimitCount := AMaxLimitCount;
-  // Создаем структуру симплекс таблицы
-  SetLength(FSimplexTable, 2+MaxLimitCount+1);
-  for i:=low(FSimplexTable) to high(FSimplexTable) do
-    SetLength(FSimplexTable[i], 3+MaxVarCount+MaxLimitCount);
-  // Заполняем таблицу пыстыми значениями
-  for i:=low(FSimplexTable) to high(FSimplexTable) do
-    for j:=low(FSimplexTable[i]) to high(FSimplexTable[i]) do
-      FSimplexTable[i][j] := 0;
-
-
-  FSimplexTable[0][0] := ' ';
-  FSimplexTable[0][1] := ' ';
-  FSimplexTable[0][2] := ' ';
-  FSimplexTable[1][0] := 'N';
-  FSimplexTable[1][1] := 'C';
-  FSimplexTable[1][2] := 'X';
-  FSimplexTable[high(FSimplexTable)][0] := ' ';
-  FSimplexTable[high(FSimplexTable)][1] := ' ';
-
-  // ставим подписи дополнительных переменных слева
-  for i:=1 to MaxVarCount+MaxLimitCount do
-    FSimplexTable[0][ColStartLim+i] := i;
-
 end;
 
 function TSimplexDataModule.GetIsEnd: boolean;
@@ -201,11 +192,15 @@ begin
         end;
     end;
   end;
-  val := FSimplexTable[RowStartLim][ColX]/FSimplexTable[RowStartLim][GuidElCol];
+  
+  if FSimplexTable[RowStartLim][GuidElCol] <> 0 then
+    val := FSimplexTable[RowStartLim][ColX]/FSimplexTable[RowStartLim][GuidElCol]
+  else
+    val := 1e9;
   GuidElRow := RowStartLim;
   GuidElVal := FSimplexTable[RowStartLim][GuidElCol];
   // Определив направляющий столбец выберем направляющий элемент
-  for i:=RowStartLim to RowStartLim+MaxLimitCount do
+  for i:=RowStartLim to RowStartLim+Length(LimitsList) -1 do
   begin
     if FSimplexTable[i][GuidElCol] > 0 then
       if FSimplexTable[i][ColX]/FSimplexTable[i][GuidElCol] < val then
@@ -219,14 +214,14 @@ begin
   // Начинаем с того что заполняем колонки С и N новыми значениями
 
   FSimplexTable[GuidElRow][ColC] := FSimplexTable[1][GuidElCol];
-  FSimplexTable[GuidElRow ][ColN] := FSimplexTable[0][GuidElCol];
+  FSimplexTable[GuidElRow][ColN] := FSimplexTable[0][GuidElCol];
 
   // По методу полного исключения Гаусса-Жордана пересчитываем остальную таблицу
 
   // Элементы оставшейся таблицы считаем, кроме направляющих столбца и строки
-  for j := ColStartLim to ColStartLim+MaxVarCount+MaxLimitCount do
+  for j := ColStartLim to ColStartLim+Length(LimitsList[0].Params)+Length(LimitsList)-1-1 do
   begin
-    for i := RowStartLim to RowStartLim+MaxLimitCount do
+    for i := RowStartLim to RowStartLim+Length(LimitsList) -1 do
     begin
       if(i <> GuidElRow)and(j <> GuidElCol)then
         FSimplexTable[i][j] := FSimplexTable[i][j]
@@ -256,11 +251,79 @@ var
 begin
   if Length(AVarParams) > FMaxVarCount+1 then
     raise Exception.Create('Задано сильно много параметров переменных !');
+  SetLength(LimitsList, Length(LimitsList)+1);
+  SetLength(LimitsList[high(LimitsList)].Params, Length(AVarParams));
+  for i:= low(AVarParams) to high(AVarParams) do
+    LimitsList[high(LimitsList)].Params[i] := AVarParams[i];
+  LimitsList[high(LimitsList)].Sign := ASign;
+
+  exit;
+  // запись в симплекс таблицу
   for i:=low(AVarParams) to high(AVarParams) do
     FSimplexTable[RowStartLim+FLimitCount][ColStartLim+i] := AVarParams[i];
   inc(FLimitCount);
-  FSimplexTable[RowStartLim+FLimitCount-1][ColStartLim+FMaxVarCount+FLimitCount] := 1;
-  FSimplexTable[RowStartLim+FLimitCount-1][0] := FLimitCount+FMaxVarCount;
+
+  case ASign of
+    tsLess:
+    begin
+      // Добавить дополительную переменную с коєфициєнтом "1"
+      // Коэфициент переменной попадающей в начальный базис
+      FSimplexTable[RowStartLim+FLimitCount-1][ColStartLim+FMaxVarCount+FLimitCount] := 1;
+      // Проставляем номер переменной, которую попадает в начальный базис
+      FSimplexTable[RowStartLim+FLimitCount-1][0] := FLimitCount+FMaxVarCount;
+    end;
+    tsEqual:
+    begin
+      // Нужно добавить вспомогательную переменную и ее ввести в базис
+    end;
+    tsGreater:
+    begin
+      // Добавить дополительную переменную с коєфициєнтом "-1" и вспомогательную
+      FSimplexTable[RowStartLim+FLimitCount-1][ColStartLim+FMaxVarCount+FLimitCount] := -1;
+    end;
+  end;//case ASign of
+
+
+  // Задаем начальные параметры таблицы
+  if FLimitCount = Self.MaxVarCount+1 then
+  begin
+    //CalcMarks;
+  end;
+end;
+
+procedure TSimplexDataModule._SetLimit(AVarParams: array of integer;
+  ASign: TLimitSign);
+var
+  i: integer;
+begin
+  if Length(AVarParams) > FMaxVarCount+1 then
+    raise Exception.Create('Задано сильно много параметров переменных !');
+
+  // запись в симплекс таблицу
+  for i:=low(AVarParams) to high(AVarParams) do
+    FSimplexTable[RowStartLim+FLimitCount][ColStartLim+i] := AVarParams[i];
+  inc(FLimitCount);
+
+  case ASign of
+    tsLess:
+    begin
+      // Добавить дополительную переменную с коєфициєнтом "1"
+      // Коэфициент переменной попадающей в начальный базис
+      FSimplexTable[RowStartLim+FLimitCount-1][ColStartLim+FMaxVarCount+FLimitCount] := 1;
+      // Проставляем номер переменной, которую попадает в начальный базис
+      FSimplexTable[RowStartLim+FLimitCount-1][0] := FLimitCount+FMaxVarCount;
+    end;
+    tsEqual:
+    begin
+      // Нужно добавить вспомогательную переменную и ее ввести в базис
+    end;
+    tsGreater:
+    begin
+      // Добавить дополительную переменную с коєфициєнтом "-1" и вспомогательную
+      FSimplexTable[RowStartLim+FLimitCount-1][ColStartLim+FMaxVarCount+FLimitCount] := -1;
+    end;
+  end;//case ASign of
+
 
   // Задаем начальные параметры таблицы
   if FLimitCount = Self.MaxVarCount+1 then
@@ -285,7 +348,24 @@ begin
     end;
     Result := Result + #10#13;
   end;
+end;
 
+procedure TSimplexDataModule.PrintTableToStringGrid(AStringGrid: TStringGrid);
+var
+  i,j: integer;
+begin
+  AStringGrid.RowCount := Length(FSimplexTable);
+  AStringGrid.ColCount := Length(FSimplexTable[0]);
+  for i:=low(FSimplexTable) to high(FSimplexTable) do
+  begin
+    for j:=low(FSimplexTable[i]) to high(FSimplexTable[i]) do
+    begin
+      if FSimplexTable[i][j] <> Unassigned then
+        AStringGrid.Cells[j,i] := VarToStr(FSimplexTable[i][j])
+      else
+        AStringGrid.Cells[j,i] := '0';
+    end;
+  end;
 end;
 
 procedure TSimplexDataModule.CalcMarks;
@@ -294,26 +374,151 @@ var
   i,j: integer;     
   res: Double;
 begin
-  for i:=ColStartLim+1 to ColStartLim+MaxVarCount+MaxLimitCount do
+  for i:=ColStartLim+1 to Length(FSimplexTable[0])-1 do
   begin
     res := 0;
     // Cj*Ai
-    for j:=RowStartLim to LimitCount+RowStartLim-1 do
+    for j:=RowStartLim to Length(LimitsList)+RowStartLim-1 do
       res := res + FSimplexTable[j][i] * FSimplexTable[j][1];
     // Cj*Ai - Ci
-    FSimplexTable[high(FSimplexTable)][i] := res - FSimplexTable[low(FSimplexTable)+1][i];
+    FSimplexTable[high(FSimplexTable)][i] := res - FSimplexTable[1][i];
   end;
 end;
 
-procedure TSimplexDataModule.SetFunc(AVarParams: array of integer);
+procedure TSimplexDataModule.SetFunc(AVarParams: array of integer; AOptimizeType: TOptimizeType);
 var
   i: integer;
 begin
   if Length(AVarParams) > FMaxVarCount+1 then
     raise Exception.Create('Задано сильно много параметров переменных !');
+  SetLength(Func.Params, Length(AVarParams));
+  for i:=low(AVarParams) to high(AVarParams) do
+    Func.Params[i] := AVarParams[i];
+  Func.OptType := AOptimizeType;
+  exit;
+
   for i:=low(AVarParams) to high(AVarParams) do
     FSimplexTable[1][ColStartLim+i+1] := AVarParams[i];
   CalcMarks;
+end;
+
+procedure TSimplexDataModule.PreIterate;
+var
+  i, j: integer;
+  LessCount, GreaterCount, EqualCount,
+  LimitCount, AddVarCount, SupVarCount, VarCount: integer;
+begin
+  LessCount := 0; GreaterCount := 0; EqualCount := 0; VarCount := 0;
+  for i := low(LimitsList) to high(LimitsList) do
+  begin
+    case LimitsList[i].Sign of
+      tsEqual:
+        inc(EqualCount);
+      tsLess:
+        inc(LessCount);
+      tsGreater:
+        inc(GreaterCount);
+    end;
+    if Length(LimitsList[i].Params) > VarCount then
+      VarCount := Length(LimitsList[i].Params);
+  end;
+  dec(VarCount);
+  if EqualCount+GreaterCount > 0 then
+    ;// Имеем двухфазный симплекс метод
+
+  // Произведя подсчет имеем картину о том какого рода задача будет решатся
+
+  // Создаем структуру симплекс таблицы
+  // Кол-во строк
+
+  SetLength(FSimplexTable, RowStartLim+Length(LimitsList)+1);
+  // Кол-во елементов в строке
+  for i:=low(FSimplexTable) to high(FSimplexTable) do
+    // Общее кол-во, кол-во доп.переменных, кол-во вспомогательных переменных
+    SetLength(FSimplexTable[i], 3+VarCount+LessCount+GreaterCount+GreaterCount+EqualCount);
+  // Заполняем таблицу пыстыми значениями
+  for i:=low(FSimplexTable) to high(FSimplexTable) do
+    for j:=low(FSimplexTable[i]) to high(FSimplexTable[i]) do
+      FSimplexTable[i][j] := 0;
+
+  FSimplexTable[0][0] := ' ';
+  FSimplexTable[0][1] := ' ';
+  FSimplexTable[0][2] := ' ';
+  FSimplexTable[1][0] := 'N';
+  FSimplexTable[1][1] := 'C';
+  FSimplexTable[1][2] := 'X';
+  FSimplexTable[high(FSimplexTable)][0] := ' ';
+  FSimplexTable[high(FSimplexTable)][1] := ' ';
+
+  // ставим подписи дополнительных переменных сверху
+  for i:=1 to VarCount do
+    FSimplexTable[0][ColStartLim+i] := 'x'+IntToStr(i);
+
+  // Заполняем симплекс-таблицу, сперва основные переменные, потом дополнительные, затем вспомогательные
+  // Сперва ограничения меньше, потом больше, потом равно
+  LimitCount := 0;
+  AddVarCount := 0;
+  SupVarCount := 0;
+  for i := low(LimitsList) to high(LimitsList) do
+  begin
+    if LimitsList[i].Sign = tsLess then
+    begin
+      inc(LimitCount);   
+
+      
+      for j:= low(LimitsList[i].Params) to high(LimitsList[i].Params) do
+        FSimplexTable[RowStartLim+LimitCount-1][ColStartLim+ j] := LimitsList[i].Params[j];
+      Inc(AddVarCount);
+      FSimplexTable[RowStartLim+LimitCount-1][ColStartLim+VarCount+AddVarCount] := 1;
+      FSimplexTable[RowStartLim+LimitCount-1][0] := 'x'+IntToStr(VarCount + LimitCount);
+      FSimplexTable[0][ColStartLim + VarCount + LimitCount] := 'x'+IntToStr(VarCount + LimitCount);
+    end;
+  end;
+
+  for i := low(LimitsList) to high(LimitsList) do
+  begin
+    if LimitsList[i].Sign = tsGreater then
+    begin
+      inc(LimitCount);
+
+      for j:= low(LimitsList[i].Params) to high(LimitsList[i].Params) do
+        FSimplexTable[RowStartLim+LimitCount-1][ColStartLim+ j] := LimitsList[i].Params[j];
+      Inc(AddVarCount);
+      FSimplexTable[RowStartLim+LimitCount-1][ColStartLim+VarCount+AddVarCount] := -1;
+      FSimplexTable[0][ColStartLim + VarCount + LimitCount] := 'x'+IntToStr(VarCount + LimitCount);
+      Inc(SupVarCount);
+      FSimplexTable[RowStartLim+LimitCount-1][ColStartLim+VarCount+LessCount+GreaterCount+SupVarCount] := 1;   
+      FSimplexTable[RowStartLim-1][ColStartLim+VarCount+LessCount+GreaterCount+SupVarCount] := 1e9-1;
+      FSimplexTable[0][ColStartLim+VarCount+LessCount+GreaterCount+SupVarCount] := 'z'+IntToStr(SupVarCount);
+      FSimplexTable[RowStartLim+LimitCount-1][0] := 'z'+IntToStr(SupVarCount);
+      FSimplexTable[RowStartLim+LimitCount-1][1] := 1e9-1;
+    end;
+  end;
+
+
+  for i := low(LimitsList) to high(LimitsList) do
+  begin
+    if LimitsList[i].Sign = tsEqual  then
+    begin
+      inc(LimitCount);
+
+
+      for j:= low(LimitsList[i].Params) to high(LimitsList[i].Params) do
+        FSimplexTable[RowStartLim+LimitCount-1][ColStartLim+ j] := LimitsList[i].Params[j];
+      Inc(SupVarCount);
+      FSimplexTable[RowStartLim+LimitCount-1][ColStartLim+VarCount+LessCount+GreaterCount+SupVarCount] := 1;
+      FSimplexTable[RowStartLim-1][ColStartLim+VarCount+LessCount+GreaterCount+SupVarCount] := 1e9-1;
+      FSimplexTable[0][ColStartLim+VarCount+LessCount+GreaterCount+SupVarCount] := 'z'+IntToStr(SupVarCount);
+      FSimplexTable[RowStartLim+LimitCount-1][0] := 'z'+IntToStr(SupVarCount);
+      FSimplexTable[RowStartLim+LimitCount-1][1] := 1e9-1;
+    end;
+  end;
+
+  // Теперь вводим целевую функцию
+  for j:= low(Func.Params) to high(Func.Params) do
+    FSimplexTable[RowStartLim-1][ColStartLim + j + 1] := Func.Params[j];
+
+  Self.CalcMarks;
 end;
 
 end.
