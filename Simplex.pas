@@ -98,9 +98,9 @@ type
     // Задание размерности симплек-таблицы и типа оптимизации
     procedure Init(AOptimizeType: TOptimizeType; AMaxVarCount: integer; AMaxLimitCount: integer);
     // Задаем целевую функцию
-    procedure SetFunc(AVarParams: array of integer; AOptimizeType: TOptimizeType);
+    procedure SetFunc(AVarParams: array of Double; AOptimizeType: TOptimizeType);
     // Задаем ограничения
-    procedure SetLimit(AVarParams: array of integer; ASign: TLimitSign);
+    procedure SetLimit(AVarParams: array of Double; ASign: TLimitSign);
     // Составление симплекс таблицы
     procedure PreIterate;
     // Итерация Симплек-метода
@@ -127,6 +127,9 @@ const
   ColC = 1;
   ColX = 2;
 
+const
+  M = 1e5;
+
 
 var
   SimplexDataModule: TSimplexDataModule;
@@ -146,6 +149,7 @@ begin
   FLimitCount := 0;
   FMaxVarCount := AMaxVarCount;
   FMaxLimitCount := AMaxLimitCount;
+  SetLength(LimitsList,0);
 end;
 
 function TSimplexDataModule.GetIsEnd: boolean;
@@ -193,10 +197,10 @@ begin
     end;
   end;
   
-  if FSimplexTable[RowStartLim][GuidElCol] <> 0 then
+  if FSimplexTable[RowStartLim][GuidElCol] > 0 then
     val := FSimplexTable[RowStartLim][ColX]/FSimplexTable[RowStartLim][GuidElCol]
   else
-    val := 1e9;
+    val := M;
   GuidElRow := RowStartLim;
   GuidElVal := FSimplexTable[RowStartLim][GuidElCol];
   // Определив направляющий столбец выберем направляющий элемент
@@ -221,7 +225,7 @@ begin
   // Элементы оставшейся таблицы считаем, кроме направляющих столбца и строки
   for j := ColStartLim to ColStartLim+Length(LimitsList[0].Params)+Length(LimitsList)-1-1 do
   begin
-    for i := RowStartLim to RowStartLim+Length(LimitsList) -1 do
+    for i := RowStartLim to RowStartLim+Length(LimitsList) do
     begin
       if(i <> GuidElRow)and(j <> GuidElCol)then
         FSimplexTable[i][j] := FSimplexTable[i][j]
@@ -244,7 +248,7 @@ begin
 
 end;
 
-procedure TSimplexDataModule.SetLimit(AVarParams: array of integer;
+procedure TSimplexDataModule.SetLimit(AVarParams: array of Double;
   ASign: TLimitSign);
 var
   i: integer;
@@ -374,7 +378,7 @@ var
   i,j: integer;     
   res: Double;
 begin
-  for i:=ColStartLim+1 to Length(FSimplexTable[0])-1 do
+  for i:=ColStartLim to Length(FSimplexTable[0])-1 do
   begin
     res := 0;
     // Cj*Ai
@@ -385,7 +389,7 @@ begin
   end;
 end;
 
-procedure TSimplexDataModule.SetFunc(AVarParams: array of integer; AOptimizeType: TOptimizeType);
+procedure TSimplexDataModule.SetFunc(AVarParams: array of Double; AOptimizeType: TOptimizeType);
 var
   i: integer;
 begin
@@ -446,7 +450,7 @@ begin
   FSimplexTable[0][2] := ' ';
   FSimplexTable[1][0] := 'N';
   FSimplexTable[1][1] := 'C';
-  FSimplexTable[1][2] := 'X';
+  FSimplexTable[1][2] := '0';
   FSimplexTable[high(FSimplexTable)][0] := ' ';
   FSimplexTable[high(FSimplexTable)][1] := ' ';
 
@@ -488,10 +492,10 @@ begin
       FSimplexTable[0][ColStartLim + VarCount + LimitCount] := 'x'+IntToStr(VarCount + LimitCount);
       Inc(SupVarCount);
       FSimplexTable[RowStartLim+LimitCount-1][ColStartLim+VarCount+LessCount+GreaterCount+SupVarCount] := 1;   
-      FSimplexTable[RowStartLim-1][ColStartLim+VarCount+LessCount+GreaterCount+SupVarCount] := 1e9-1;
+      FSimplexTable[RowStartLim-1][ColStartLim+VarCount+LessCount+GreaterCount+SupVarCount] := M;
       FSimplexTable[0][ColStartLim+VarCount+LessCount+GreaterCount+SupVarCount] := 'z'+IntToStr(SupVarCount);
       FSimplexTable[RowStartLim+LimitCount-1][0] := 'z'+IntToStr(SupVarCount);
-      FSimplexTable[RowStartLim+LimitCount-1][1] := 1e9-1;
+      FSimplexTable[RowStartLim+LimitCount-1][1] := M;
     end;
   end;
 
@@ -507,10 +511,10 @@ begin
         FSimplexTable[RowStartLim+LimitCount-1][ColStartLim+ j] := LimitsList[i].Params[j];
       Inc(SupVarCount);
       FSimplexTable[RowStartLim+LimitCount-1][ColStartLim+VarCount+LessCount+GreaterCount+SupVarCount] := 1;
-      FSimplexTable[RowStartLim-1][ColStartLim+VarCount+LessCount+GreaterCount+SupVarCount] := 1e9-1;
+      FSimplexTable[RowStartLim-1][ColStartLim+VarCount+LessCount+GreaterCount+SupVarCount] := M;
       FSimplexTable[0][ColStartLim+VarCount+LessCount+GreaterCount+SupVarCount] := 'z'+IntToStr(SupVarCount);
       FSimplexTable[RowStartLim+LimitCount-1][0] := 'z'+IntToStr(SupVarCount);
-      FSimplexTable[RowStartLim+LimitCount-1][1] := 1e9-1;
+      FSimplexTable[RowStartLim+LimitCount-1][1] := M;
     end;
   end;
 
