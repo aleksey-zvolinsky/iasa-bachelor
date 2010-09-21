@@ -233,12 +233,12 @@ begin
     end;
   end;
   // Ёлементы строки делим на ведущий элемент
-  for i := ColStartLim to ColStartLim+MaxVarCount+MaxLimitCount do
+  for i := ColStartLim to ColStartLim+Length(LimitsList[0].Params)+Length(LimitsList)-1-1 do
   begin
     FSimplexTable[GuidElRow][i] := FSimplexTable[GuidElRow][i] / GuidElVal;
   end;
   // Ёлементы столбца ставим нул€ми
-  for i:=RowStartLim to RowStartLim+MaxLimitCount do
+  for i:=RowStartLim to RowStartLim+Length(LimitsList)-1 do
   begin
     if i <> GuidElRow then
     begin
